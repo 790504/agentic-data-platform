@@ -1,0 +1,14 @@
+version: 2
+
+models:
+  - name: county_quarter_panel
+    description: "Analysis-ready panel keyed by (county, quarter), integrating all three sources."
+    columns:
+      - name: county
+        tests: [not_null]
+      - name: quarter
+        tests: [not_null]
+      - name: fema_policies_total_premium
+        tests: [not_null]
+      - name: hmda_loans_loan_count
+        tests: [not_null]

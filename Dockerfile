@@ -6,7 +6,11 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY adp ./adp
 COPY eval ./eval
+COPY transform ./transform
 RUN pip install --no-cache-dir .
+
+# dbt project lives outside the installed package; point the runner at it.
+ENV ADP_DBT_DIR=/app/transform
 
 EXPOSE 8000
 # scale-to-zero friendly; bind all interfaces for container/cloud runtimes.

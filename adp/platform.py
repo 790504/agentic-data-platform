@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from .agent import Agent
 from .config import Settings, get_settings
+from .dbt_runner import DbtRunner
 from .llm import LLM
 from .memory import Memory
 from .monitoring import setup_logging
@@ -19,9 +20,10 @@ class Platform:
     def __init__(self, settings: Settings | None = None):
         self.settings = settings or get_settings()
         setup_logging(self.settings.log_level)
-        self.wh = Warehouse(self.settings.db_path)
+        self.wh = Warehouse(self.settings.warehouse_connection())
         self.mem = Memory(self.wh)
-        self.ctx = Context(self.wh, self.mem, self.settings)
+        self.dbt = DbtRunner(self.settings, self.wh)
+        self.ctx = Context(self.wh, self.mem, self.settings, dbt=self.dbt)
         self.registry = build_registry(self.ctx)
         self.llm = LLM(self.settings)
         self.planner = Planner(self.llm)

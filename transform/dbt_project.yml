@@ -1,0 +1,20 @@
+name: "adp"
+version: "1.0.0"
+config-version: 2
+profile: "adp"
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+# Versioned, tested, warehouse-portable transforms. The same models run on
+# local DuckDB (dev), MotherDuck (cloud), or BigQuery (gcp) by switching target.
+models:
+  adp:
+    +materialized: table
+    staging:
+      +schema: staging
+    marts:
+      +schema: marts

@@ -20,7 +20,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "dbt-core>=1.8", "dbt-duckdb>=1.8"]
+# Cloud / portable warehouse targets (install as needed):
+cloud = ["dbt-duckdb>=1.8"]            # MotherDuck uses the duckdb adapter + a token
+gcp = ["dbt-bigquery>=1.8"]            # run the same dbt models on Google BigQuery
 
 [project.scripts]
 adp = "adp.cli:main"

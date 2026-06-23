@@ -11,9 +11,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_prefix="ADP_", extra="ignore")
 
-    # --- storage ---
+    # --- storage / warehouse backend ---
     data_dir: Path = Field(default=Path("data"))
     db_path: Path = Field(default=Path("data/warehouse.duckdb"))
+    # duckdb (local file) | motherduck (serverless cloud, DuckDB-compatible)
+    warehouse_backend: str = Field(default="duckdb")
+    motherduck_database: str = Field(default="adp")  # token read from MOTHERDUCK_TOKEN env
+
+    # --- dbt transform layer ---
+    dbt_dir: Path | None = Field(default=None)  # defaults to <repo>/transform
+    dbt_target: str | None = Field(default=None)  # defaults per backend (dev / cloud)
 
     # --- LLM (optional: platform degrades gracefully to a deterministic planner) ---
     # Accept the conventional ANTHROPIC_API_KEY as well as ADP_ANTHROPIC_API_KEY.
@@ -37,6 +44,21 @@ class Settings(BaseSettings):
     @property
     def llm_enabled(self) -> bool:
         return bool(self.anthropic_api_key)
+
+    @property
+    def is_cloud(self) -> bool:
+        return self.warehouse_backend == "motherduck"
+
+    def warehouse_connection(self) -> str:
+        """DuckDB connection string: a local file, or a MotherDuck (md:) URI."""
+        if self.is_cloud:
+            return f"md:{self.motherduck_database}"
+        return str(self.db_path)
+
+    def effective_dbt_target(self) -> str:
+        if self.dbt_target:
+            return self.dbt_target
+        return "cloud" if self.is_cloud else "dev"
 
 
 @lru_cache

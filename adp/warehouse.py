@@ -9,6 +9,7 @@ Layers (schemas):
 from __future__ import annotations
 
 import logging
+from contextlib import contextmanager
 from pathlib import Path
 from threading import RLock
 
@@ -29,13 +30,30 @@ def is_numeric_type(data_type: str) -> bool:
 class Warehouse:
     """Thin, thread-safe wrapper over a single DuckDB connection."""
 
-    def __init__(self, db_path: str | Path):
-        self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+    def __init__(self, connection: str | Path):
+        # ``connection`` is a local DuckDB file path, or a MotherDuck "md:" URI.
+        self.connection = str(connection)
+        self.is_cloud = self.connection.startswith("md:")
+        if not self.is_cloud:
+            Path(self.connection).parent.mkdir(parents=True, exist_ok=True)
         self._lock = RLock()
-        self._con = duckdb.connect(str(self.db_path))
+        self._connect()
+
+    def _connect(self) -> None:
+        self._con = duckdb.connect(self.connection)
         for layer in LAYERS:
             self._con.execute(f"CREATE SCHEMA IF NOT EXISTS {layer}")
+
+    @contextmanager
+    def released(self):
+        """Temporarily drop the connection so an in-process dbt run can take the
+        DuckDB file lock, then reconnect. No-op semantics for cloud backends."""
+        with self._lock:
+            self._con.close()
+            try:
+                yield
+            finally:
+                self._connect()
 
     # --- execution ---
     def execute(self, sql: str, params: list | None = None):

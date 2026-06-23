@@ -59,6 +59,7 @@ class Context:
     wh: Warehouse
     mem: Memory
     settings: Settings
+    dbt: Any = None  # DbtRunner (optional; typed as Any to avoid an import cycle)
 
 
 def _q(ident: str) -> str:
@@ -236,6 +237,36 @@ def _list_catalog(ctx: Context) -> dict:
     return {"datasets": ctx.mem.catalog()}
 
 
+def _sync_dbt_models(ctx: Context) -> list[str]:
+    """Register dbt-built staging/marts tables in the catalog and rebuild lineage
+    from dbt's manifest DAG."""
+    registered: list[str] = []
+    for layer in ("staging", "marts"):
+        for row in ctx.wh.query(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = ?", [layer]
+        ):
+            name = row["table_name"]
+            schema = ctx.wh.table_schema(layer, name)
+            n = ctx.wh.row_count(layer, name)
+            ctx.mem.register_dataset(name, layer, "dbt", n, schema, f"built by dbt ({layer})")
+            registered.append(name)
+    # refresh dbt lineage idempotently
+    ctx.wh.execute("DELETE FROM meta.lineage WHERE transform = 'dbt'")
+    for edge in (ctx.dbt.manifest_lineage() if ctx.dbt else []):
+        if ctx.mem.get_dataset(edge["output"]):
+            ctx.mem.add_lineage(edge["output"], [edge["input"]], "dbt")
+    return registered
+
+
+def _run_dbt(ctx: Context, command: str = "build", target: str | None = None, select: str | None = None) -> dict:
+    if ctx.dbt is None:
+        raise RuntimeError("dbt runner is not configured")
+    result = ctx.dbt.run(command=command, target=target, select=select)
+    if command in ("build", "run"):
+        result["registered"] = _sync_dbt_models(ctx)
+    return result
+
+
 # --------------------------------------------------------------------------- #
 # Registry assembly
 # --------------------------------------------------------------------------- #
@@ -329,6 +360,21 @@ def build_registry(ctx: Context) -> ToolRegistry:
         "List all registered datasets.",
         {"type": "object", "properties": {}},
         lambda **kw: _list_catalog(ctx, **kw),
+    ))
+
+    reg.register(Tool(
+        "run_dbt",
+        "Run the versioned dbt transform project (build/run/test) against the configured warehouse "
+        "target (local DuckDB or cloud MotherDuck/BigQuery); records model lineage from dbt's manifest.",
+        {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "default": "build", "description": "build|run|test"},
+                "target": {"type": "string", "description": "dbt target: dev|cloud|gcp"},
+                "select": {"type": "string", "description": "optional dbt --select node selector"},
+            },
+        },
+        lambda **kw: _run_dbt(ctx, **kw),
     ))
 
     return reg

@@ -11,5 +11,11 @@ data/*.duckdb.wal
 data/samples/*.csv
 data/samples/*.parquet
 
+# dbt artifacts
+transform/target/
+transform/dbt_packages/
+transform/logs/
+logs/
+
 # Secrets
 .env

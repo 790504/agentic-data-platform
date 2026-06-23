@@ -67,7 +67,11 @@ class Planner:
                 "why": "integrate sources (parsed)",
             })
 
-        # 3. ad-hoc SQL transform
+        # 3a. dbt transform (versioned, tested, warehouse-portable)
+        if hints.get("dbt") is not None:
+            steps.append({"tool": "run_dbt", "args": dict(hints["dbt"]), "why": "versioned dbt transform"})
+
+        # 3b. ad-hoc SQL transform
         sql = hints.get("sql")
         if sql:
             steps.append({

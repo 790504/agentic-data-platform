@@ -54,6 +54,33 @@ def cmd_demo(args) -> int:
     return 0 if result["status"] == "success" else 1
 
 
+def cmd_dbt(args) -> int:
+    p = Platform()
+    if not p.dbt.available():
+        print("dbt not installed. Install with:  uv pip install -e \".[dev]\"")
+        p.close()
+        return 1
+    paths = generate_samples(p.settings.data_dir / "samples")
+    result = p.agent.run(
+        "Ingest the sources, then build and test the dbt transforms.",
+        {
+            "ingest": [{"path": paths[n], "name": n} for n in paths],
+            "dbt": {"command": "build"},
+        },
+    )
+    backend = "MotherDuck (cloud)" if p.settings.is_cloud else "DuckDB (local)"
+    print(f"\n=== dbt RUN {result['run_id']} : {result['status']}  [backend: {backend}] ===")
+    for s in result["steps"]:
+        mark = "OK " if s["ok"] else "ERR"
+        print(f"  [{mark}] {s['tool']:<12} {json.dumps(s.get('result', s.get('error')), default=str)[:120]}")
+    print("\n--- lineage(county_quarter_panel) from dbt manifest ---")
+    _print(p.mem.lineage_of("county_quarter_panel"))
+    print("\n--- sample served rows ---")
+    _print(p.serve_dataset("county_quarter_panel", limit=2))
+    p.close()
+    return 0 if result["status"] == "success" else 1
+
+
 def cmd_ask(args) -> int:
     p = Platform()
     result = p.agent.run(args.task)
@@ -92,6 +119,7 @@ def main(argv: list[str] | None = None) -> int:
     ask.add_argument("task")
     ask.set_defaults(func=cmd_ask)
 
+    sub.add_parser("dbt", help="ingest then build+test the dbt transforms").set_defaults(func=cmd_dbt)
     sub.add_parser("eval", help="run the evaluation suite").set_defaults(func=cmd_eval)
     sub.add_parser("catalog", help="list datasets").set_defaults(func=cmd_catalog)
 

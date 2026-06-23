@@ -1,0 +1,32 @@
+# dbt connection profiles. The transform layer is warehouse-portable: the same
+# models build on local DuckDB, MotherDuck (cloud), or BigQuery (GCP) by target.
+#
+#   dev    -> local DuckDB file (default; used by tests/CI)
+#   cloud  -> MotherDuck serverless warehouse (set MOTHERDUCK_TOKEN)
+#   gcp    -> Google BigQuery (set a service-account keyfile)         [portable]
+adp:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('ADP_DB_PATH', 'data/warehouse.duckdb') }}"
+      schema: main
+      threads: 4
+
+    cloud:
+      # MotherDuck = DuckDB-compatible serverless cloud warehouse.
+      # The motherduck extension reads the token from the MOTHERDUCK_TOKEN env var.
+      type: duckdb
+      path: "md:{{ env_var('ADP_MOTHERDUCK_DATABASE', 'adp') }}"
+      schema: main
+      threads: 4
+
+    gcp:
+      # Google BigQuery — same models, different warehouse. Requires GCP creds.
+      type: bigquery
+      method: service-account
+      keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS', '') }}"
+      project: "{{ env_var('GCP_PROJECT', '') }}"
+      dataset: "{{ env_var('BQ_DATASET', 'adp') }}"
+      location: "{{ env_var('BQ_LOCATION', 'US') }}"
+      threads: 4

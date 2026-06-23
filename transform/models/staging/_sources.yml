@@ -1,0 +1,14 @@
+version: 2
+
+# The raw tables the agent's ingest_file tool lands in the `raw` schema.
+sources:
+  - name: raw
+    schema: raw
+    description: "Heterogeneous external sources ingested verbatim by the platform."
+    tables:
+      - name: fema_policies
+        description: "Flood-insurance policy counts and premiums by county-quarter."
+      - name: property_sales
+        description: "Property transaction prices and counts by county-quarter."
+      - name: hmda_loans
+        description: "Mortgage loan counts and amounts by county-quarter."

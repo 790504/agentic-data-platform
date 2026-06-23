@@ -13,7 +13,8 @@ decomposition, tool calling, memory, failure retry, eval, monitoring,
 stability) in one dependency-light codebase you can read in an afternoon.
 
 ```
-status: ✓ 13/13 unit tests   ✓ 3/3 eval tasks   ✓ runs fully offline (no API key required)
+status: ✓ 15/15 unit tests   ✓ 3/3 eval tasks   ✓ 9/9 dbt models+tests
+        ✓ runs fully offline (no API key required)   ✓ local DuckDB ↔ cloud MotherDuck ↔ BigQuery (dbt)
 ```
 
 ---
@@ -36,11 +37,13 @@ flowchart LR
     PLAN --> AG[Agent runtime\nplan→execute→observe]
     AG -->|retry + SQL self-repair\n+ circuit breaker| TR[Tool registry]
     TR --> IN[ingest_file]
+    TR --> DBT[run_dbt\nversioned transforms]
     TR --> BP[build_panel]
     TR --> SQ[run_sql / create_dataset]
     TR --> VA[validate_dataset]
-    IN & BP & SQ & VA --> WH[(DuckDB warehouse\nraw · staging · marts · meta)]
-    AG --> MEM[Memory: catalog · runs · lineage]
+    DBT --> DP[(dbt project\nstaging · marts · tests)]
+    IN & BP & SQ & VA & DP --> WH[(Warehouse\nDuckDB local · MotherDuck cloud · BigQuery\nraw · staging · marts · meta)]
+    AG --> MEM[Memory: catalog · runs · lineage\n+ dbt manifest DAG]
     WH --> API[FastAPI: serve data / lineage / metrics]
     AG -. metrics/logs .-> MON[Monitoring]
     MON --> API
@@ -55,7 +58,8 @@ lineage — the agent's long-term memory is itself a governed dataset).
 | Concern | Where | What it does |
 |---|---|---|
 | **Task decomposition** | [`planner.py`](adp/planner.py) | LLM or deterministic planner turns a task into an ordered tool plan |
-| **Tool calling** | [`agent.py`](adp/agent.py), [`tools.py`](adp/tools.py) | one centralized loop calls typed tools (ingest, panel, SQL, validate, profile) |
+| **Tool calling** | [`agent.py`](adp/agent.py), [`tools.py`](adp/tools.py) | one centralized loop calls typed tools (ingest, **run_dbt**, panel, SQL, validate, profile) |
+| **Orchestration / transforms** | [`dbt_runner.py`](adp/dbt_runner.py), [`transform/`](transform/) | agent orchestrates a versioned, tested **dbt** project; lineage recovered from dbt's manifest DAG |
 | **Memory** | [`memory.py`](adp/memory.py) | persistent dataset catalog, run history and lineage in `meta.*` tables |
 | **Failure retry / self-correction** | [`retry.py`](adp/retry.py), [`agent.py`](adp/agent.py) | exponential backoff; on retry the LLM repairs broken SQL (Reflexion-style) |
 | **Evaluation** | [`eval_harness.py`](adp/eval_harness.py), [`eval/tasks.yaml`](eval/tasks.yaml) | config-driven, execution-based assertions; gates CI |
@@ -69,13 +73,37 @@ uv venv --python 3.13
 uv pip install -e ".[dev]"
 
 uv run adp demo      # ingest 3 sources → build county-quarter panel → validate
-uv run pytest        # 13 tests
+uv run adp dbt       # ingest → orchestrate dbt build+test → manifest lineage
+uv run pytest        # 15 tests
 uv run adp eval      # evaluation suite (non-zero exit on failure)
 uv run adp serve     # FastAPI on http://127.0.0.1:8000  (docs at /docs)
 uv run adp ask "Ingest data/samples/*.csv and build a county-quarter panel"
 ```
 
 Enable LLM planning/self-repair: `cp .env.example .env` and set `ANTHROPIC_API_KEY`.
+
+## Transforms: dbt + portable warehouses
+
+The transform layer is a real **dbt** project ([`transform/`](transform/)): three
+staging models + a `county_quarter_panel` mart, with `not_null` and a
+custom grain-uniqueness test. The agent runs it via the `run_dbt` tool
+([`dbt_runner.py`](adp/dbt_runner.py)) using dbt's programmatic `dbtRunner`, then
+recovers the model→source DAG from `target/manifest.json` as lineage.
+
+Because the models are plain SQL with `ref()`/`source()`/`USING(...)`, they are
+**warehouse-portable** — the same `dbt build` runs against:
+
+| Target | Backend | How |
+|---|---|---|
+| `dev` | local **DuckDB** file | default; verified in CI |
+| `cloud` | **MotherDuck** (serverless, DuckDB-compatible) | `ADP_WAREHOUSE_BACKEND=motherduck` + `MOTHERDUCK_TOKEN` |
+| `gcp` | **Google BigQuery** | `pip install ".[gcp]"`, set GCP creds, `--target gcp` |
+
+```bash
+# run the whole platform on a cloud warehouse (free MotherDuck token):
+export ADP_WAREHOUSE_BACKEND=motherduck MOTHERDUCK_TOKEN=...   # token from app.motherduck.com
+uv run adp dbt        # ingest + dbt build now execute on MotherDuck, not a local file
+```
 
 ## What the demo does
 
@@ -110,6 +138,10 @@ key, not-null). Catalog, lineage and metrics are persisted and served.
   themselves, not bolted on, so every served dataset is traceable to its sources.
 - **Validate-before-trust.** A dataset isn't "done" until its DQ gate passes; the
   eval harness consumes the same validation signal.
+- **Portable transforms via dbt.** Business logic lives in versioned, tested dbt
+  models — not in Python strings — so it runs unchanged on DuckDB, MotherDuck or
+  BigQuery by switching a target. The warehouse is an implementation detail behind
+  one `Warehouse` connection string.
 
 ## How this maps to the role (Anthropic — Research Engineer, Economic Research Data Platform)
 
@@ -130,14 +162,19 @@ key, not-null). Catalog, lineage and metrics are persisted and served.
 
 ## Limitations & roadmap (honest v1 scope)
 
-This is a **single-node, batch** platform built around a local DuckDB file. It is
-deliberately *not* yet: distributed/streaming, cloud-deployed at scale, or
-backed by an orchestration framework. Natural next steps, in order:
+This is a **batch** platform. Done and still to do:
 
-1. Swap the warehouse for a cloud target (BigQuery/Snowflake) behind the same `Warehouse` interface.
-2. Add `dbt` for versioned, tested transforms; emit OpenTelemetry spans for tracing.
-3. Per-stage checkpointing for crash-resume on long ingests.
-4. Privacy-preserving aggregation (k-anonymity / differential privacy) on served datasets.
+- [x] **Versioned, tested transforms via dbt** (`transform/`), orchestrated by the agent.
+- [x] **Cloud warehouse** behind one connection string — MotherDuck (serverless), with the dbt models portable to BigQuery (GCP).
+- [x] **Lineage from dbt's manifest DAG**, merged with ingest lineage.
+- [ ] Emit OpenTelemetry spans for distributed tracing (metrics exist; tracing next).
+- [ ] Per-stage checkpointing for crash-resume on long ingests.
+- [ ] Privacy-preserving aggregation (k-anonymity / differential privacy) on served datasets.
+- [ ] Streaming / incremental dbt models for high-volume sources.
+
+> Honest scope: the **cloud path is real and runnable** (DuckDB↔MotherDuck is the
+> same connector; the dbt models run on BigQuery with a profile switch), but
+> end-to-end at production scale, streaming, and raw-AWS/GCP infra are out of v1.
 
 ## License
 
