@@ -15,6 +15,7 @@ data/samples/*.parquet
 transform/target/
 transform/dbt_packages/
 transform/logs/
+transform/.user.yml
 logs/
 
 # Secrets
