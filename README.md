@@ -13,8 +13,9 @@ decomposition, tool calling, memory, failure retry, eval, monitoring,
 stability) in one dependency-light codebase you can read in an afternoon.
 
 ```
-status: ✓ 15/15 unit tests   ✓ 3/3 eval tasks   ✓ 9/9 dbt models+tests
+status: ✓ 18/18 unit tests   ✓ 3/3 eval tasks   ✓ 9/9 dbt models+tests
         ✓ runs fully offline (no API key required)   ✓ local DuckDB ↔ cloud MotherDuck ↔ BigQuery (dbt)
+        ✓ Economic Index module: classify usage → occupation shares → validate (local LLM or API)
 ```
 
 ![Architecture](docs/architecture.png)
@@ -76,7 +77,8 @@ uv pip install -e ".[dev]"
 
 uv run adp demo      # ingest 3 sources → build county-quarter panel → validate
 uv run adp dbt       # ingest → orchestrate dbt build+test → manifest lineage
-uv run pytest        # 15 tests
+uv run adp econ      # classify conversations → AI economic index → validate (free, offline)
+uv run pytest        # 18 tests
 uv run adp eval      # evaluation suite (non-zero exit on failure)
 uv run adp serve     # FastAPI on http://127.0.0.1:8000  (docs at /docs)
 uv run adp ask "Ingest data/samples/*.csv and build a county-quarter panel"
@@ -106,6 +108,29 @@ Because the models are plain SQL with `ref()`/`source()`/`USING(...)`, they are
 export ADP_WAREHOUSE_BACKEND=motherduck MOTHERDUCK_TOKEN=...   # token from app.motherduck.com
 uv run adp dbt        # ingest + dbt build now execute on MotherDuck, not a local file
 ```
+
+## Economic Index module (a small AEI replica)
+
+[`adp/econ/`](adp/econ/) builds a miniature version of the Anthropic Economic
+Index on top of the platform: it classifies each conversation into an O*NET-style
+occupation and an **automation-vs-augmentation** label, aggregates occupation
+shares, and **validates the distribution against a reference** (Spearman rank
+correlation). The classifier is pluggable:
+
+| backend | cost | notes |
+|---|---|---|
+| `heuristic` | free | keyword match; default, used by tests/CI and the offline demo |
+| `ollama` | free | a local LLM on your GPU — `ADP_ECON_CLASSIFIER=ollama` |
+| `claude` | paid | Anthropic API — highest quality |
+
+```bash
+uv run adp econ                       # offline heuristic demo (free)
+ADP_ECON_CLASSIFIER=ollama uv run adp econ --n 500   # classify with a local model
+```
+
+The index is registered in the catalog, so it is served at `GET /datasets/econ_index`.
+See [`adp/econ/README.md`](adp/econ/README.md) for how to point it at the real
+**WildChat-1M** corpus and the full **O*NET** taxonomy.
 
 ## What the demo does
 

@@ -81,6 +81,28 @@ def cmd_dbt(args) -> int:
     return 0 if result["status"] == "success" else 1
 
 
+def cmd_econ(args) -> int:
+    from .econ.pipeline import run_econ_index
+    p = Platform()
+    backend = args.backend or p.settings.econ_classifier
+    rep = run_econ_index(p, n=args.n, backend=backend, write_samples=True)
+    print(f"\n=== MINI ECONOMIC INDEX  (n={rep['n']}, classifier={rep['backend']}) ===")
+    print(f"  overall automation share: {rep['automation_overall']:.0%}   "
+          f"(augmentation: {1 - rep['automation_overall']:.0%})")
+    print(f"\n  {'occupation':<28}{'share':>8}{'auto%':>8}{'aug%':>8}{'n':>6}")
+    for r in rep["by_occupation"]:
+        print(f"  {r['occupation']:<28}{r['share']:>7.1%}{r['automation_share']:>7.0%}{r['augmentation_share']:>7.0%}{r['n']:>6}")
+    v = rep["validation"]
+    print(f"\n  validation vs reference distribution:")
+    print(f"    Spearman rank corr : {v['spearman']:+.3f}  (1.0 = identical ranking)")
+    print(f"    top-5 overlap      : {v['top5_overlap']}/5")
+    print(f"    your top-5         : {', '.join(v['computed_top5'])}")
+    print(f"    reference top-5    : {', '.join(v['reference_top5'])}")
+    print(f"\n  served at:  GET /datasets/econ_index   (run `adp serve`)")
+    p.close()
+    return 0
+
+
 def cmd_ask(args) -> int:
     p = Platform()
     result = p.agent.run(args.task)
@@ -120,6 +142,11 @@ def main(argv: list[str] | None = None) -> int:
     ask.set_defaults(func=cmd_ask)
 
     sub.add_parser("dbt", help="ingest then build+test the dbt transforms").set_defaults(func=cmd_dbt)
+
+    econ = sub.add_parser("econ", help="build a mini AI economic index from conversations")
+    econ.add_argument("--n", type=int, default=None, help="number of conversations to classify")
+    econ.add_argument("--backend", default=None, help="heuristic | ollama | claude")
+    econ.set_defaults(func=cmd_econ)
     sub.add_parser("eval", help="run the evaluation suite").set_defaults(func=cmd_eval)
     sub.add_parser("catalog", help="list datasets").set_defaults(func=cmd_catalog)
 

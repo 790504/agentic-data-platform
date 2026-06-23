@@ -65,6 +65,19 @@ class Warehouse:
                 log(_log, logging.ERROR, "sql_error", error=str(exc), sql=sql[:240])
                 raise
 
+    def create_table_from_rows(self, schema: str, name: str, rows: list[dict]) -> int:
+        """Materialize a list of dict rows as a table (CREATE OR REPLACE). Returns row count."""
+        import pandas as pd
+
+        df = pd.DataFrame(rows)
+        with self._lock:
+            self._con.register("_tmp_rows", df)
+            try:
+                self._con.execute(f'CREATE OR REPLACE TABLE {schema}."{name}" AS SELECT * FROM _tmp_rows')
+            finally:
+                self._con.unregister("_tmp_rows")
+        return len(df)
+
     def query(self, sql: str, params: list | None = None) -> list[dict]:
         cur = self.execute(sql, params)
         if cur.description is None:

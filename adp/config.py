@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     dbt_dir: Path | None = Field(default=None)  # defaults to <repo>/transform
     dbt_target: str | None = Field(default=None)  # defaults per backend (dev / cloud)
 
+    # --- economic-index module (classify LLM-usage into occupations) ---
+    econ_classifier: str = Field(default="heuristic")  # heuristic | ollama | claude
+    econ_ollama_url: str = Field(default="http://localhost:11434")
+    econ_ollama_model: str = Field(default="qwen2.5:7b")
+    econ_sample_size: int = Field(default=60)
+
     # --- LLM (optional: platform degrades gracefully to a deterministic planner) ---
     # Accept the conventional ANTHROPIC_API_KEY as well as ADP_ANTHROPIC_API_KEY.
     anthropic_api_key: str | None = Field(
