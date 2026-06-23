@@ -17,6 +17,8 @@ status: ✓ 15/15 unit tests   ✓ 3/3 eval tasks   ✓ 9/9 dbt models+tests
         ✓ runs fully offline (no API key required)   ✓ local DuckDB ↔ cloud MotherDuck ↔ BigQuery (dbt)
 ```
 
+![Architecture](docs/architecture.png)
+
 ---
 
 ## Why this design

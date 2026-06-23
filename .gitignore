@@ -20,3 +20,6 @@ logs/
 
 # Secrets
 .env
+
+# rendering artifact
+docs/render.html
