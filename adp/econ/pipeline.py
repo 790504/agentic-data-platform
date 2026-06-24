@@ -21,17 +21,19 @@ from .classify import classify_all
 _log = get_logger("adp.econ")
 
 
-def run_econ_index(platform, n: int | None = None, backend: str | None = None, write_samples: bool = False) -> dict:
+def run_econ_index(platform, n: int | None = None, backend: str | None = None,
+                   conversations: list | None = None, source_name: str = "sample",
+                   write_samples: bool = False) -> dict:
     settings = platform.settings
     n = n or settings.econ_sample_size
     backend = backend or settings.econ_classifier
     wh, mem = platform.wh, platform.mem
 
-    # 1. conversations (bundled sample; swap for WildChat for real runs)
-    convs = samples.generate_conversations(n)
-    if write_samples:
+    # 1. conversations: caller-provided (e.g. WildChat) or the bundled sample
+    convs = conversations if conversations is not None else samples.generate_conversations(n)
+    if write_samples and conversations is None:
         samples.write_csv(convs, settings.data_dir / "econ" / "conversations.csv")
-    log(_log, logging.INFO, "econ_start", n=len(convs), backend=backend)
+    log(_log, logging.INFO, "econ_start", n=len(convs), backend=backend, source=source_name)
 
     # 2. classify
     rows = classify_all(convs, backend, settings)
@@ -39,8 +41,8 @@ def run_econ_index(platform, n: int | None = None, backend: str | None = None, w
     # 3. land raw
     wh.create_table_from_rows("raw", "usage_classified", rows)
     sch = wh.table_schema("raw", "usage_classified")
-    mem.register_dataset("usage_classified", "raw", f"econ:{backend}", len(rows), sch, "classified conversations")
-    mem.add_lineage("usage_classified", ["source:conversations"], "classify")
+    mem.register_dataset("usage_classified", "raw", f"econ:{backend}:{source_name}", len(rows), sch, "classified conversations")
+    mem.add_lineage("usage_classified", [f"source:{source_name}"], "classify")
 
     # 4. aggregate -> the index
     wh.execute(

@@ -85,8 +85,14 @@ def cmd_econ(args) -> int:
     from .econ.pipeline import run_econ_index
     p = Platform()
     backend = args.backend or p.settings.econ_classifier
-    rep = run_econ_index(p, n=args.n, backend=backend, write_samples=True)
-    print(f"\n=== MINI ECONOMIC INDEX  (n={rep['n']}, classifier={rep['backend']}) ===")
+    convs, source = None, "sample"
+    if args.source == "wildchat":
+        from .econ.wildchat import load_wildchat
+        print(f"streaming {args.n or 200} real conversations from WildChat-1M ...")
+        convs = load_wildchat(n=args.n or 200)
+        source = "wildchat"
+    rep = run_econ_index(p, n=args.n, backend=backend, conversations=convs, source_name=source, write_samples=True)
+    print(f"\n=== MINI ECONOMIC INDEX  (n={rep['n']}, classifier={rep['backend']}, source={source}) ===")
     print(f"  overall automation share: {rep['automation_overall']:.0%}   "
           f"(augmentation: {1 - rep['automation_overall']:.0%})")
     print(f"\n  {'occupation':<28}{'share':>8}{'auto%':>8}{'aug%':>8}{'n':>6}")
@@ -146,6 +152,7 @@ def main(argv: list[str] | None = None) -> int:
     econ = sub.add_parser("econ", help="build a mini AI economic index from conversations")
     econ.add_argument("--n", type=int, default=None, help="number of conversations to classify")
     econ.add_argument("--backend", default=None, help="heuristic | ollama | claude")
+    econ.add_argument("--source", default="sample", choices=["sample", "wildchat"], help="conversation source")
     econ.set_defaults(func=cmd_econ)
     sub.add_parser("eval", help="run the evaluation suite").set_defaults(func=cmd_eval)
     sub.add_parser("catalog", help="list datasets").set_defaults(func=cmd_catalog)
