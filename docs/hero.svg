@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 240" width="880" height="240" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#eef3f7"/>
+    </linearGradient>
+    <linearGradient id="title" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#15324a"/>
+      <stop offset="1" stop-color="#2f6f9f"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="1" y="1" width="878" height="238" rx="16" fill="url(#bg)" stroke="#d7e0ea"/>
+
+  <!-- title -->
+  <text x="440" y="74" text-anchor="middle" font-size="38" font-weight="700" fill="url(#title)">Agentic Data Platform</text>
+  <!-- tagline -->
+  <text x="440" y="104" text-anchor="middle" font-size="15" fill="#5f6f7b">An LLM agent that ingests, transforms, validates &amp; serves data</text>
+
+  <!-- pipeline connector -->
+  <line x1="120" y1="168" x2="760" y2="168" stroke="#c4d2df" stroke-width="2"/>
+
+  <!-- pipeline nodes (accent bar on each pulses in sequence as data passes) -->
+  <g>
+    <rect x="56" y="148" width="128" height="40" rx="9" fill="#ffffff" stroke="#c9d6e2"/>
+    <rect x="56" y="148" width="128" height="3" rx="1.5" fill="#2f6f9f"><animate attributeName="opacity" values="0.25;1;0.25" keyTimes="0;0.5;1" dur="2.6s" begin="0s" repeatCount="indefinite"/></rect>
+    <text x="120" y="173" text-anchor="middle" font-size="13.5" font-weight="600" fill="#1c2c36">Ingest</text>
+
+    <rect x="216" y="148" width="128" height="40" rx="9" fill="#ffffff" stroke="#c9d6e2"/>
+    <rect x="216" y="148" width="128" height="3" rx="1.5" fill="#2f6f9f"><animate attributeName="opacity" values="0.25;1;0.25" keyTimes="0;0.5;1" dur="2.6s" begin="0.52s" repeatCount="indefinite"/></rect>
+    <text x="280" y="173" text-anchor="middle" font-size="13.5" font-weight="600" fill="#1c2c36">Classify · LLM</text>
+
+    <rect x="376" y="148" width="128" height="40" rx="9" fill="#ffffff" stroke="#c9d6e2"/>
+    <rect x="376" y="148" width="128" height="3" rx="1.5" fill="#2f6f9f"><animate attributeName="opacity" values="0.25;1;0.25" keyTimes="0;0.5;1" dur="2.6s" begin="1.04s" repeatCount="indefinite"/></rect>
+    <text x="440" y="173" text-anchor="middle" font-size="13.5" font-weight="600" fill="#1c2c36">dbt transform</text>
+
+    <rect x="536" y="148" width="128" height="40" rx="9" fill="#ffffff" stroke="#c9d6e2"/>
+    <rect x="536" y="148" width="128" height="3" rx="1.5" fill="#2f6f9f"><animate attributeName="opacity" values="0.25;1;0.25" keyTimes="0;0.5;1" dur="2.6s" begin="1.56s" repeatCount="indefinite"/></rect>
+    <text x="600" y="173" text-anchor="middle" font-size="13.5" font-weight="600" fill="#1c2c36">Warehouse</text>
+
+    <rect x="696" y="148" width="128" height="40" rx="9" fill="#ffffff" stroke="#c9d6e2"/>
+    <rect x="696" y="148" width="128" height="3" rx="1.5" fill="#2f6f9f"><animate attributeName="opacity" values="0.25;1;0.25" keyTimes="0;0.5;1" dur="2.6s" begin="2.08s" repeatCount="indefinite"/></rect>
+    <text x="760" y="173" text-anchor="middle" font-size="13.5" font-weight="600" fill="#1c2c36">Serve · API</text>
+  </g>
+
+  <!-- flowing data packets along the pipeline (loop forever) -->
+  <circle r="9" fill="#2f6f9f" opacity="0.18"><animateMotion path="M120,168 H760" dur="2.6s" begin="0s" repeatCount="indefinite"/></circle>
+  <circle r="5" fill="#2f6f9f"><animateMotion path="M120,168 H760" dur="2.6s" begin="0s" repeatCount="indefinite"/></circle>
+  <circle r="5" fill="#15324a"><animateMotion path="M120,168 H760" dur="2.6s" begin="0.87s" repeatCount="indefinite"/></circle>
+  <circle r="5" fill="#5aa0d6"><animateMotion path="M120,168 H760" dur="2.6s" begin="1.74s" repeatCount="indefinite"/></circle>
+
+  <!-- production-concern caption -->
+  <text x="440" y="222" text-anchor="middle" font-size="11.5" fill="#7a8893">task decomposition · tool calling · memory · retry · evaluation · monitoring</text>
+</svg>

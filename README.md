@@ -1,208 +1,166 @@
-# Agentic Data Platform
+<div align="center">
 
-An LLM **agent** that builds and serves a small **data platform**: it ingests
-heterogeneous external sources, integrates them into clean keyed datasets,
-validates them, tracks lineage, and serves them over an API — driven by a
-plan → execute → observe loop with retry, self-correction, evaluation and
-monitoring built in.
+<img src="docs/hero.svg" alt="Agentic Data Platform" width="100%" />
 
-It is intentionally a *bridge* project: it exercises **data-platform
-engineering** (ingest/transform/validate/serve, medallion layers, lineage,
-DuckDB, an HTTP data API) **and** the **production-agent** concerns (task
-decomposition, tool calling, memory, failure retry, eval, monitoring,
-stability) in one dependency-light codebase you can read in an afternoon.
+# 🧩 Agentic Data Platform
 
-```
-status: ✓ 18/18 unit tests   ✓ 3/3 eval tasks   ✓ 9/9 dbt models+tests
-        ✓ runs fully offline (no API key required)   ✓ local DuckDB ↔ cloud MotherDuck ↔ BigQuery (dbt)
-        ✓ Economic Index module: classify usage → occupation shares → validate (local LLM or API)
-```
+**An LLM agent that ingests, integrates, validates and serves heterogeneous data —
+with task decomposition, tool calling, memory, retry/self-repair, evaluation and monitoring.**
 
-![Architecture](docs/architecture.png)
+*Built around seven production concerns, with a mini [Anthropic Economic Index](#-economic-index-module) replica on top.*
+
+<br/>
+
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
+![dbt](https://img.shields.io/badge/dbt-1.8%2B-FF694B?logo=dbt&logoColor=white)
+![DuckDB](https://img.shields.io/badge/DuckDB-FFF000?logo=duckdb&logoColor=black)
+![MotherDuck](https://img.shields.io/badge/MotherDuck-cloud-1A1A2E)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-18%20unit%20%2B%209%20dbt-3fae49)
+![Offline](https://img.shields.io/badge/runs-fully%20offline-success)
+![License](https://img.shields.io/badge/license-MIT-blue)
+
+</div>
 
 ---
 
-## Why this design
+A single LLM agent turns raw, messy, multi-source data into **clean, reusable, well-governed
+datasets** and serves them over an API — the way a data-platform team works, in miniature. It is
+deliberately engineered around the concerns that separate a real platform from a notebook:
+**task decomposition, tool calling, persistent memory, failure retry & self-repair, evaluation,
+monitoring, and stability.**
 
-The platform treats the LLM as an **optional accelerator**, not a hard
-dependency. With `ANTHROPIC_API_KEY` set, Claude does flexible planning and
-repairs broken SQL between retries. Without a key, a **deterministic planner**
-produces the same plans from structured hints — so CI, tests and the demo are
-hermetic and reproducible. This "graceful degradation" is a deliberate
-reliability choice, and it is the difference between a demo and a system.
+It runs **fully offline with zero cost** (deterministic planner + local classifiers), and scales
+up to a real LLM (local **Ollama** on your GPU, or the **Claude API**) and a real cloud warehouse
+(**MotherDuck**, or **BigQuery** via dbt) by flipping a config flag — no code changes.
 
-## Architecture
+## ✨ Highlights
 
-```mermaid
-flowchart LR
-    U[Task: NL or hints] --> PL[Planner]
-    PL -->|LLM or deterministic| PLAN[Ordered plan]
-    PLAN --> AG[Agent runtime\nplan→execute→observe]
-    AG -->|retry + SQL self-repair\n+ circuit breaker| TR[Tool registry]
-    TR --> IN[ingest_file]
-    TR --> DBT[run_dbt\nversioned transforms]
-    TR --> BP[build_panel]
-    TR --> SQ[run_sql / create_dataset]
-    TR --> VA[validate_dataset]
-    DBT --> DP[(dbt project\nstaging · marts · tests)]
-    IN & BP & SQ & VA & DP --> WH[(Warehouse\nDuckDB local · MotherDuck cloud · BigQuery\nraw · staging · marts · meta)]
-    AG --> MEM[Memory: catalog · runs · lineage\n+ dbt manifest DAG]
-    WH --> API[FastAPI: serve data / lineage / metrics]
-    AG -. metrics/logs .-> MON[Monitoring]
-    MON --> API
-```
+- 🤖 **One agent, real engineering** — a centralized `plan → execute → observe` loop calls typed tools with retry, SQL self-repair, and a circuit breaker.
+- 🧬 **End-to-end lineage** — every served number traces back through aggregation → transform → raw source, blending ingest lineage with dbt's manifest DAG.
+- 🧱 **Versioned, tested, portable transforms** — business logic lives in **dbt** models (with tests), not Python strings, so it runs unchanged on DuckDB / MotherDuck / BigQuery.
+- 📊 **A mini Anthropic Economic Index** — classifies real human-LLM conversations into O*NET occupations and **automation-vs-augmentation**, then validates the distribution against a reference.
+- 🌱 **Graceful degradation** — no API key? It falls back to a deterministic planner and heuristic classifier so every demo, test and eval still passes.
 
-Medallion layers in DuckDB: `raw` (verbatim ingest) → `staging`/`marts`
-(transformed, served) → `meta` (the platform's own catalog, run history and
-lineage — the agent's long-term memory is itself a governed dataset).
+## 🏗️ Architecture
 
-## The seven production concerns — and where each lives
+<div align="center">
+<img src="docs/architecture.png" alt="Architecture" width="92%" />
+</div>
 
-| Concern | Where | What it does |
+## 🤖 The seven production concerns
+
+| # | Concern | Where it lives |
 |---|---|---|
-| **Task decomposition** | [`planner.py`](adp/planner.py) | LLM or deterministic planner turns a task into an ordered tool plan |
-| **Tool calling** | [`agent.py`](adp/agent.py), [`tools.py`](adp/tools.py) | one centralized loop calls typed tools (ingest, **run_dbt**, panel, SQL, validate, profile) |
-| **Orchestration / transforms** | [`dbt_runner.py`](adp/dbt_runner.py), [`transform/`](transform/) | agent orchestrates a versioned, tested **dbt** project; lineage recovered from dbt's manifest DAG |
-| **Memory** | [`memory.py`](adp/memory.py) | persistent dataset catalog, run history and lineage in `meta.*` tables |
-| **Failure retry / self-correction** | [`retry.py`](adp/retry.py), [`agent.py`](adp/agent.py) | exponential backoff; on retry the LLM repairs broken SQL (Reflexion-style) |
-| **Evaluation** | [`eval_harness.py`](adp/eval_harness.py), [`eval/tasks.yaml`](eval/tasks.yaml) | config-driven, execution-based assertions; gates CI |
-| **Monitoring** | [`monitoring.py`](adp/monitoring.py) | structured JSON logs + counters & latency percentiles via `GET /metrics` |
-| **Stability** | `retry.py` (circuit breaker), `tools.py` (SELECT-only SQL, idempotent `CREATE OR REPLACE`, path checks) | treats the agent as untrusted; fails fast and stays up |
+| 1 | **Task decomposition** | [`planner.py`](adp/planner.py) — LLM or deterministic plan |
+| 2 | **Tool calling** | [`agent.py`](adp/agent.py) · [`tools.py`](adp/tools.py) — one loop, typed tools |
+| 3 | **Memory** | [`memory.py`](adp/memory.py) — catalog · run history · lineage |
+| 4 | **Retry / self-repair** | [`retry.py`](adp/retry.py) — backoff, circuit breaker, LLM SQL repair |
+| 5 | **Evaluation** | [`eval/`](eval/) · [`eval_harness.py`](adp/eval_harness.py) — task suite, gates CI |
+| 6 | **Monitoring** | [`monitoring.py`](adp/monitoring.py) — structured logs + p50/p95 metrics |
+| 7 | **Stability** | SELECT-only SQL guard · idempotent writes · graceful fallbacks · timeouts |
 
-## Quickstart
+## 📊 Economic Index module
 
-```bash
-uv venv --python 3.13
-uv pip install -e ".[dev]"
+[`adp/econ/`](adp/econ/) is a small, faithful replica of the **Anthropic Economic Index**
+methodology, built on the platform:
 
-uv run adp demo      # ingest 3 sources → build county-quarter panel → validate
-uv run adp dbt       # ingest → orchestrate dbt build+test → manifest lineage
-uv run adp econ      # classify conversations → AI economic index → validate (free, offline)
-uv run pytest        # 18 tests
-uv run adp eval      # evaluation suite (non-zero exit on failure)
-uv run adp serve     # FastAPI on http://127.0.0.1:8000  (docs at /docs)
-uv run adp ask "Ingest data/samples/*.csv and build a county-quarter panel"
+```
+conversations → classify (occupation + automation/augmentation)
+             → aggregate to occupation shares → validate vs a reference (Spearman)
+             → registered in the catalog → served at GET /datasets/econ_index
 ```
 
-Enable LLM planning/self-repair: `cp .env.example .env` and set `ANTHROPIC_API_KEY`.
+The classifier is **pluggable**, so you choose the cost/quality trade-off:
 
-## Transforms: dbt + portable warehouses
+| Backend | Cost | Notes |
+|---|---|---|
+| `heuristic` | free | keyword match; default, used by tests/CI and the offline demo |
+| `ollama` | free | a local LLM on your GPU (e.g. `qwen2.5:7b`) |
+| `claude` | paid | the Anthropic API — highest quality |
 
-The transform layer is a real **dbt** project ([`transform/`](transform/)): three
-staging models + a `county_quarter_panel` mart, with `not_null` and a
-custom grain-uniqueness test. The agent runs it via the `run_dbt` tool
-([`dbt_runner.py`](adp/dbt_runner.py)) using dbt's programmatic `dbtRunner`, then
-recovers the model→source DAG from `target/manifest.json` as lineage.
+> **Verified run:** 150 real conversations from **WildChat-1M**, classified locally with
+> `qwen2.5:7b` (0 fallbacks), produced a usage distribution led by **writing, software and data
+> analysis** — matching the published Economic Index shape. See [`adp/econ/README.md`](adp/econ/README.md)
+> for scaling to the full corpus and O*NET taxonomy.
 
-Because the models are plain SQL with `ref()`/`source()`/`USING(...)`, they are
-**warehouse-portable** — the same `dbt build` runs against:
+## 🧱 Transforms: dbt + portable warehouses
+
+The same `dbt build` runs against any target — switch with one env var:
 
 | Target | Backend | How |
 |---|---|---|
 | `dev` | local **DuckDB** file | default; verified in CI |
 | `cloud` | **MotherDuck** (serverless, DuckDB-compatible) | `ADP_WAREHOUSE_BACKEND=motherduck` + `MOTHERDUCK_TOKEN` |
-| `gcp` | **Google BigQuery** | `pip install ".[gcp]"`, set GCP creds, `--target gcp` |
+| `gcp` | **Google BigQuery** | `pip install ".[gcp]"` + GCP creds, `--target gcp` |
+
+## 🚀 Quickstart
 
 ```bash
+git clone https://github.com/790504/agentic-data-platform && cd agentic-data-platform
+uv venv && uv pip install -e ".[dev]"
+
+uv run adp demo      # ingest 3 sources → build a county-quarter panel → validate
+uv run adp dbt       # ingest → orchestrate dbt build + tests → manifest lineage
+uv run adp econ      # classify conversations → AI economic index → validate (free, offline)
+uv run adp eval      # evaluation suite (non-zero exit on failure)
+uv run adp serve     # FastAPI on http://127.0.0.1:8000  (docs at /docs)
+uv run pytest        # 18 unit + dbt integration tests
+```
+
+<details>
+<summary>Use a local LLM or a cloud warehouse</summary>
+
+```bash
+# classify with a local model on your GPU (free):
+ADP_ECON_CLASSIFIER=ollama uv run adp econ --source wildchat --n 500
+
 # run the whole platform on a cloud warehouse (free MotherDuck token):
-export ADP_WAREHOUSE_BACKEND=motherduck MOTHERDUCK_TOKEN=...   # token from app.motherduck.com
-uv run adp dbt        # ingest + dbt build now execute on MotherDuck, not a local file
+export ADP_WAREHOUSE_BACKEND=motherduck MOTHERDUCK_TOKEN=...
+uv run adp dbt
+```
+</details>
+
+## 🗂️ Repository structure
+
+```
+agentic-data-platform/
+├── adp/                    # the platform package
+│   ├── agent.py            # plan → execute → observe loop (retry + SQL self-repair)
+│   ├── planner.py          # LLM or deterministic task decomposition
+│   ├── tools.py            # typed tool registry (ingest · run_dbt · build_panel · run_sql · validate)
+│   ├── warehouse.py        # DuckDB / MotherDuck connection + layers (raw·staging·marts·meta)
+│   ├── memory.py           # catalog · run history · lineage
+│   ├── dbt_runner.py       # orchestrates dbt; lineage from the manifest DAG
+│   ├── llm.py              # Anthropic client (graceful offline fallback)
+│   ├── retry.py            # backoff + circuit breaker
+│   ├── monitoring.py       # structured logs + p50/p95 metrics
+│   ├── api.py              # FastAPI: serve data / lineage / metrics
+│   └── econ/               # mini Anthropic-Economic-Index module
+│       ├── classify.py     # heuristic / ollama / claude backends
+│       ├── taxonomy.py     # O*NET-style occupation taxonomy
+│       ├── wildchat.py     # WildChat-1M loader
+│       └── pipeline.py     # classify → aggregate → validate
+├── transform/              # dbt project (staging + marts + tests)
+├── eval/                   # evaluation suite
+├── tests/                  # 18 unit + dbt integration tests
+└── docs/                   # architecture diagram + hero
 ```
 
-## Economic Index module (a small AEI replica)
+## 🧰 Tech stack
 
-[`adp/econ/`](adp/econ/) builds a miniature version of the Anthropic Economic
-Index on top of the platform: it classifies each conversation into an O*NET-style
-occupation and an **automation-vs-augmentation** label, aggregates occupation
-shares, and **validates the distribution against a reference** (Spearman rank
-correlation). The classifier is pluggable:
+`Python` · `DuckDB` · `MotherDuck` · `dbt` · `FastAPI` · `pandas` · `Anthropic` / `Ollama` · `Docker` · `GitHub Actions`
 
-| backend | cost | notes |
-|---|---|---|
-| `heuristic` | free | keyword match; default, used by tests/CI and the offline demo |
-| `ollama` | free | a local LLM on your GPU — `ADP_ECON_CLASSIFIER=ollama` |
-| `claude` | paid | Anthropic API — highest quality |
+## 🗺️ Roadmap
 
-```bash
-uv run adp econ                       # offline heuristic demo (free)
-ADP_ECON_CLASSIFIER=ollama uv run adp econ --n 500   # classify with a local model
-```
+- [x] Versioned, tested dbt transforms, orchestrated by the agent
+- [x] Cloud warehouse behind one connection string (MotherDuck; BigQuery-portable)
+- [x] Lineage from dbt's manifest DAG, merged with ingest lineage
+- [x] Economic Index module (classify usage → occupation shares → validate)
+- [ ] OpenTelemetry tracing
+- [ ] Per-stage checkpointing for crash-resume on long ingests
+- [ ] Privacy-preserving aggregation (k-anonymity / differential privacy) on served datasets
 
-The index is registered in the catalog, so it is served at `GET /datasets/econ_index`.
-See [`adp/econ/README.md`](adp/econ/README.md) for how to point it at the real
-**WildChat-1M** corpus and the full **O*NET** taxonomy.
+## 📄 License
 
-## What the demo does
-
-Generates three synthetic, deterministic sources keyed by `(county, quarter)` —
-flood-insurance policies, property sales, mortgage records — then runs one agent
-task that ingests all three, aggregates each source's numeric columns by the
-shared keys, inner-joins them into a **200-row `county_quarter_panel`**
-(10 counties × 20 quarters), and runs a data-quality gate (row count, unique
-key, not-null). Catalog, lineage and metrics are persisted and served.
-
-## API
-
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/health` | liveness + capability summary |
-| GET | `/metrics` | counters + latency percentiles |
-| GET | `/catalog` | registered datasets |
-| GET | `/datasets/{name}?limit=&offset=` | **serve dataset rows** |
-| GET | `/datasets/{name}/schema` | column schema |
-| GET | `/lineage/{name}` | upstream provenance edges |
-| GET | `/runs`, `/runs/{id}` | agent run history |
-| POST | `/agent/run` | run a task `{task, hints}` |
-
-## Design decisions
-
-- **Dependency-light on purpose.** The agent loop, retry, breaker, metrics and
-  planner are ~600 lines of readable Python rather than a framework, so the
-  engineering is legible. The patterns are borrowed from the references below.
-- **Idempotent writes.** Every write tool uses `CREATE OR REPLACE`, so a retried
-  step is safe — a precondition for safe retries.
-- **Provenance by construction.** Catalog + lineage are written by the tools
-  themselves, not bolted on, so every served dataset is traceable to its sources.
-- **Validate-before-trust.** A dataset isn't "done" until its DQ gate passes; the
-  eval harness consumes the same validation signal.
-- **Portable transforms via dbt.** Business logic lives in versioned, tested dbt
-  models — not in Python strings — so it runs unchanged on DuckDB, MotherDuck or
-  BigQuery by switching a target. The warehouse is an implementation detail behind
-  one `Warehouse` connection string.
-
-## How this maps to the role (Anthropic — Research Engineer, Economic Research Data Platform)
-
-- *"Build the data pipelines that turn raw … data into clean, reusable datasets"* → `ingest_file` + `build_panel` + medallion layers.
-- *"Build self-serve workflows to ingest and integrate external data sources so they're interoperable"* → multi-source ingest + keyed panel integration.
-- *"Develop the APIs, libraries, and interfaces that serve data to researchers"* → the FastAPI service.
-- *"Ensure data reliability, integrity… across all… data infrastructure"* → validation gates, lineage, idempotency, monitoring.
-- *Bonus: building systems on top of LLMs; data lineage/governance tooling; econometrics/quant-social-science framing.*
-
-## Reference projects (researched, real)
-
-- [motherduckdb/analytics-agent-duckdb-workshop](https://github.com/motherduckdb/analytics-agent-duckdb-workshop) — DuckDB text-to-SQL agent; closest stack match.
-- [anthropics/claude-cookbooks](https://github.com/anthropics/claude-cookbooks) — canonical agent workflow patterns on a tiny LLM-call util.
-- [microsoft/autogen](https://github.com/microsoft/autogen) (Magentic-One) — dual-ledger planning / progress reflection.
-- [pydantic/pydantic-ai](https://github.com/pydantic/pydantic-ai) — "validation error = retry signal".
-- [vanna-ai/vanna](https://github.com/vanna-ai/vanna) · [Canner/WrenAI](https://github.com/Canner/WrenAI) — text-to-SQL + governed semantic layer.
-- [great-expectations](https://github.com/great-expectations/great_expectations) / [pandera](https://github.com/unionai-oss/pandera) — declarative validation as an objective eval signal.
-
-## Limitations & roadmap (honest v1 scope)
-
-This is a **batch** platform. Done and still to do:
-
-- [x] **Versioned, tested transforms via dbt** (`transform/`), orchestrated by the agent.
-- [x] **Cloud warehouse** behind one connection string — MotherDuck (serverless), with the dbt models portable to BigQuery (GCP).
-- [x] **Lineage from dbt's manifest DAG**, merged with ingest lineage.
-- [ ] Emit OpenTelemetry spans for distributed tracing (metrics exist; tracing next).
-- [ ] Per-stage checkpointing for crash-resume on long ingests.
-- [ ] Privacy-preserving aggregation (k-anonymity / differential privacy) on served datasets.
-- [ ] Streaming / incremental dbt models for high-volume sources.
-
-> Honest scope: the **cloud path is real and runnable** (DuckDB↔MotherDuck is the
-> same connector; the dbt models run on BigQuery with a profile switch), but
-> end-to-end at production scale, streaming, and raw-AWS/GCP infra are out of v1.
-
-## License
-
-MIT
+[MIT](LICENSE)
